@@ -9,44 +9,9 @@ Parameters:
   BucketName:
     Type: String
     Default: yuval-amar-data-engineering-assignment
-    Description: Name of the S3 bucket to store results
+    Description: Name of the existing S3 bucket to store results
 
 Resources:
-  ResultsBucket:
-    Type: AWS::S3::Bucket
-    Properties:
-      BucketName: !Ref BucketName
-      VersioningConfiguration:
-        Status: Enabled
-
-  DailyAverageReturnFolder:
-    Type: AWS::S3::Object
-    Properties:
-      Bucket: !Ref ResultsBucket
-      Key: daily_average_return/
-      ContentType: application/x-directory
-
-  HighestWorthTickerFolder:
-    Type: AWS::S3::Object
-    Properties:
-      Bucket: !Ref ResultsBucket
-      Key: highest_worth_ticker/
-      ContentType: application/x-directory
-
-  AnnualizedStdDailyReturnsFolder:
-    Type: AWS::S3::Object
-    Properties:
-      Bucket: !Ref ResultsBucket
-      Key: annualized_std_daily_returns/
-      ContentType: application/x-directory
-
-  TopThree30DayReturnFolder:
-    Type: AWS::S3::Object
-    Properties:
-      Bucket: !Ref ResultsBucket
-      Key: top_three_30_day_return/
-      ContentType: application/x-directory
-
   GlueDatabase:
     Type: AWS::Glue::Database
     Properties:
@@ -62,11 +27,10 @@ Resources:
       CatalogId: !Ref AWS::AccountId
       TableInput:
         Name: daily_average_return
-        PartitionKeys:
-          - Name: Date
-            Type: string
         StorageDescriptor:
           Columns:
+            - Name: date
+              Type: date
             - Name: average_return
               Type: double
           Location: !Sub 's3://${BucketName}/daily_average_return/'
@@ -74,6 +38,11 @@ Resources:
           OutputFormat: org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat
           SerdeInfo:
             SerializationLibrary: org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe
+          Compressed: false
+        TableType: EXTERNAL_TABLE
+        Parameters:
+          classification: parquet
+          typeOfData: file
 
   GlueHighestWorthTickerTable:
     Type: AWS::Glue::Table
@@ -88,12 +57,17 @@ Resources:
             - Name: ticker
               Type: string
             - Name: value
-              Type: double
+              Type: string
           Location: !Sub 's3://${BucketName}/highest_worth_ticker/'
           InputFormat: org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat
           OutputFormat: org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat
           SerdeInfo:
             SerializationLibrary: org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe
+          Compressed: false
+        TableType: EXTERNAL_TABLE
+        Parameters:
+          classification: parquet
+          typeOfData: file
 
   GlueAnnualizedStdDailyReturnsTable:
     Type: AWS::Glue::Table
@@ -108,12 +82,17 @@ Resources:
             - Name: ticker
               Type: string
             - Name: standard_deviation
-              Type: double
+              Type: string
           Location: !Sub 's3://${BucketName}/annualized_std_daily_returns/'
           InputFormat: org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat
           OutputFormat: org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat
           SerdeInfo:
             SerializationLibrary: org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe
+          Compressed: false
+        TableType: EXTERNAL_TABLE
+        Parameters:
+          classification: parquet
+          typeOfData: file
 
   GlueTopThree30DayReturnTable:
     Type: AWS::Glue::Table
@@ -134,6 +113,11 @@ Resources:
           OutputFormat: org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat
           SerdeInfo:
             SerializationLibrary: org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe
+          Compressed: false
+        TableType: EXTERNAL_TABLE
+        Parameters:
+          classification: parquet
+          typeOfData: file
 
   GlueJob:
     Type: AWS::Glue::Job
@@ -141,19 +125,19 @@ Resources:
       Command:
         Name: glueetl
         PythonVersion: '3'
-        ScriptLocation: !Sub 's3://${BucketName}/etl_script/etl_stock_analysis.py'
+        ScriptLocation: !Sub 's3://${BucketName}/etl_scripts/etl_stock_analysis.py'
       DefaultArguments:
         '--job-language': 'python'
         '--job-bookmark-option': 'job-bookmark-enable'
       ExecutionProperty:
         MaxConcurrentRuns: 1
       MaxRetries: 0
-      Name: etl-analysis-job
+      Name: yuval-amar-home-assignment-glue-etl
       Role: !Sub 'arn:aws:iam::${AWS::AccountId}:role/${ExistingGlueRoleName}'
       GlueVersion: '3.0'
       NumberOfWorkers: 2
       WorkerType: 'G.1X'
-
+  
   GlueCrawler:
     Type: AWS::Glue::Crawler
     DependsOn:
@@ -177,6 +161,15 @@ Resources:
         UpdateBehavior: "UPDATE_IN_DATABASE"
         DeleteBehavior: "LOG"
       Configuration: '{"Version":1.0,"CrawlerOutput":{"Partitions":{"AddOrUpdateBehavior":"InheritFromTable"}}}'
+
+  GlueJobTrigger:
+    Type: AWS::Glue::Trigger
+    Properties:
+      Name: StartETLJobTrigger
+      Type: ON_DEMAND
+      Description: Trigger to start the ETL job on demand
+      Actions:
+        - JobName: !Ref GlueJob
 
 Outputs:
   GlueJobName:
@@ -202,4 +195,7 @@ Outputs:
     Value: top_three_30_day_return
   BucketName:
     Description: S3 Bucket Name
-    Value: !Ref ResultsBucket
+    Value: !Ref BucketName
+  GlueJobTriggerName:
+    Description: Glue Job Trigger Name
+    Value: !Ref GlueJobTrigger
