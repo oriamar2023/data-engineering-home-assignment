@@ -8,12 +8,9 @@ from pyspark.sql.window import Window
 from pyspark.sql.types import StructType, StructField, StringType, DoubleType, IntegerType
 
 
-# Initialize GlueContext and SparkSession
 sc = SparkContext.getOrCreate()
 glueContext = GlueContext(sc)
 spark = glueContext.spark_session
-
-# Initialize Job
 job = Job(glueContext)
 job.init('stock_etl_analysis')
 
@@ -23,12 +20,9 @@ def upload_df_to_s3_as_parquet(df, bucket_name, prefix_path):
             .mode('overwrite') \
             .parquet(s3_path)
 
-# Your data processing code starts here
-# For example:
 input_path = "s3://yuval-amar-data-engineering-assignment/raw_data/stocks_data.csv"
 df = spark.read.option("header", True).csv(input_path, inferSchema=True)
 
-# Preprocess the data
 df = df.withColumn("Date", to_date(col("Date"), "yyyy-MM-dd")) \
     .withColumn("open", col("open").cast("double")) \
     .withColumn("high", col("high").cast("double")) \
@@ -36,7 +30,6 @@ df = df.withColumn("Date", to_date(col("Date"), "yyyy-MM-dd")) \
     .withColumn("close", col("close").cast("double")) \
     .withColumn("volume", col("volume").cast("long"))
 
-# Sort the data by date and ticker
 df = df.orderBy("ticker","Date")
 
 # Create window specifications
